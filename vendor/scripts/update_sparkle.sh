@@ -95,6 +95,7 @@ fetch_extract "$RELEASE_URL" "$TMP"
 PREBUILT_FW="$TMP/Sparkle.framework"
 
 rebuild_dest "$DEST" Sources/Sparkle/include/Sparkle Sources/Sparkle/internal Sources/Sparkle/ed25519 Helpers bin
+cp "$TMP/src/LICENSE" "$DEST/LICENSE"
 
 # Headers split:
 #   - The 23 public-API headers (from the prebuilt framework's Headers/) go in include/Sparkle/.

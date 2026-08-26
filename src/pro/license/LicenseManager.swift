@@ -1,6 +1,11 @@
 import Foundation
 
 class LicenseManager {
+    enum Mode {
+        case remote
+        case localPro
+    }
+
     static let keychainService = "\(App.bundleIdentifier).license"
     static let defaultsSuiteName = "\(App.bundleIdentifier).license"
 
@@ -9,8 +14,9 @@ class LicenseManager {
         return LicenseManager(
             clock: SystemClock(),
             keychain: keychain,
-            api: RemoteLicenseClient(baseUrl: Endpoints.licenseApiBaseUrl, keychain: keychain),
-            defaults: UserDefaults(suiteName: defaultsSuiteName)!
+            api: DisabledLicenseAPI(),
+            defaults: UserDefaults(suiteName: defaultsSuiteName)!,
+            mode: .localPro
         )
     }()
 
@@ -31,6 +37,7 @@ class LicenseManager {
     let keychain: Keychain
     let api: LicenseAPI
     let defaults: UserDefaults
+    private let mode: Mode
 
     /// Called whenever `state` changes (including the initial `initialize()` assignment).
     /// Production wires this up in App.swift to refresh Menubar, sync Sparkle cookie, and notify ProTransitionManager.
@@ -52,9 +59,13 @@ class LicenseManager {
         didSet { onStateChanged?(state) }
     }
 
-    var customerEmail: String? { defaults.string(forKey: Self.customerEmailKey) }
+    var customerEmail: String? {
+        guard !isLocalPro else { return nil }
+        return defaults.string(forKey: Self.customerEmailKey)
+    }
 
     var isLifetimeVariant: Bool {
+        if isLocalPro { return true }
         guard let variant = keychain.value(account: Self.keychainVariantAccount) else { return false }
         return Self.lifetimeVariants.contains(variant)
     }
@@ -81,14 +92,24 @@ class LicenseManager {
         return Int(clock.now.timeIntervalSince(start) / 86400)
     }
 
-    init(clock: Clock, keychain: Keychain, api: LicenseAPI, defaults: UserDefaults) {
+    private var isLocalPro: Bool {
+        if case .localPro = mode { return true }
+        return false
+    }
+
+    init(clock: Clock, keychain: Keychain, api: LicenseAPI, defaults: UserDefaults, mode: Mode = .remote) {
         self.clock = clock
         self.keychain = keychain
         self.api = api
         self.defaults = defaults
+        self.mode = mode
     }
 
     func initialize() {
+        guard !isLocalPro else {
+            state = .pro
+            return
+        }
         state = computeState()
         scheduleAsyncRevalidationIfNeeded()
     }
@@ -97,11 +118,19 @@ class LicenseManager {
     /// reassigns `state`. Call this from UI surfaces before they read `state` so the day count
     /// reflects the current clock. `didSet` only fires when the value actually changed.
     func refreshState() {
+        guard !isLocalPro else {
+            if state != .pro { state = .pro }
+            return
+        }
         let newState = computeState()
         if newState != state { state = newState }
     }
 
     func activate(_ licenseKey: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard !isLocalPro else {
+            completion(.failure(LicenseAPIError.disabledInLocalBuild))
+            return
+        }
         api.activate(licenseKey) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
@@ -143,6 +172,10 @@ class LicenseManager {
     }
 
     func deactivate(completion: @escaping (Result<Void, Error>) -> Void) {
+        guard !isLocalPro else {
+            completion(.failure(LicenseAPIError.disabledInLocalBuild))
+            return
+        }
         guard let licenseKey = keychain.value(account: Self.keychainKeyAccount),
               let instanceId = keychain.value(account: Self.keychainInstanceAccount) else {
             completion(.failure(LicenseAPIError.invalidKey))
@@ -171,12 +204,17 @@ class LicenseManager {
     /// Remote-deactivate a specific instance that isn't this machine — used to reclaim a seat
     /// before re-running activation. Does not touch local keychain/UserDefaults state.
     func deactivateInstance(licenseKey: String, instanceId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard !isLocalPro else {
+            completion(.failure(LicenseAPIError.disabledInLocalBuild))
+            return
+        }
         api.deactivate(licenseKey, instanceId: instanceId) { result in
             DispatchQueue.main.async { completion(result) }
         }
     }
 
     func computeState() -> LicenseState {
+        if isLocalPro { return .pro }
         if keychain.value(account: Self.keychainKeyAccount) != nil {
             let lastValidationResult = defaults.bool(forKey: "lastValidationResult")
             guard lastValidationResult else { return .trialExpired }
@@ -203,6 +241,7 @@ class LicenseManager {
     }
 
     func scheduleAsyncRevalidationIfNeeded() {
+        guard !isLocalPro else { return }
         let lastValidation = defaults.double(forKey: "lastValidation")
         let elapsed = clock.now.timeIntervalSince1970 - lastValidation
         guard elapsed >= Self.revalidationInterval else { return }
@@ -210,6 +249,7 @@ class LicenseManager {
     }
 
     func revalidateWithServer() {
+        guard !isLocalPro else { return }
         guard let licenseKey = keychain.value(account: Self.keychainKeyAccount),
               let instanceId = keychain.value(account: Self.keychainInstanceAccount) else { return }
         api.validate(licenseKey, instanceId: instanceId) { [weak self] result in

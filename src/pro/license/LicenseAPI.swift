@@ -7,6 +7,22 @@ protocol LicenseAPI {
     func deactivate(_ licenseKey: String, instanceId: String, completion: @escaping (Result<Void, Error>) -> Void)
 }
 
+/// Network-free implementation used by AltTabLocal. License UI is removed, but keeping a disabled
+/// client behind the manager makes accidental future call sites fail locally instead of phoning home.
+struct DisabledLicenseAPI: LicenseAPI {
+    func activate(_ licenseKey: String, completion: @escaping (Result<ActivateResult, Error>) -> Void) {
+        completion(.failure(LicenseAPIError.disabledInLocalBuild))
+    }
+
+    func validate(_ licenseKey: String, instanceId: String, completion: @escaping (Result<ValidateResult, Error>) -> Void) {
+        completion(.failure(LicenseAPIError.disabledInLocalBuild))
+    }
+
+    func deactivate(_ licenseKey: String, instanceId: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        completion(.failure(LicenseAPIError.disabledInLocalBuild))
+    }
+}
+
 struct ActivateResult {
     let instanceId: String
     let variantId: String?
@@ -25,6 +41,7 @@ struct ActiveInstance {
 }
 
 enum LicenseAPIError: LocalizedError {
+    case disabledInLocalBuild
     case invalidKey
     case activationRejected(String)
     case seatLimitExceeded(instances: [ActiveInstance])
@@ -36,6 +53,7 @@ enum LicenseAPIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .disabledInLocalBuild: return NSLocalizedString("License services are disabled in AltTabLocal.", comment: "")
         case .invalidKey: return NSLocalizedString("Invalid license key.", comment: "")
         case .activationRejected(let reason): return reason
         case .seatLimitExceeded: return NSLocalizedString("This license is already activated on the maximum number of machines. Deactivate one to continue.", comment: "")

@@ -404,7 +404,6 @@ final class AppearancePane {
         AppearanceTab.labelTheme,
         AppearanceTab.labelShortcutStyle,
         AppearanceTab.labelPreviewSelectedWindow,
-        ProBadgeView.proLabel,
     ] + AppearanceStylePreference.allCases.map { $0.localizedString }
       + AppearanceSizePreference.allCases.map { $0.localizedString }
       + AppearanceThemePreference.allCases.map { $0.localizedString }
@@ -428,18 +427,14 @@ final class AppearancePane {
             globalIndex: { Preferences.appearanceStyle.index },
             proGatedIndices: AppearanceTab.proGatedAppearanceStyleIndices(),
             onChange: onChange)
-        AppearanceTab.addProBadgesToStyleButtons(style.stack)
-
         size = ShortcutOverrideSegmented(
             baseName: "appearanceSizeOverride",
             cases: AppearanceSizePreference.allCases,
             globalIndex: { Preferences.appearanceSize.index },
             proGatedIndices: [AppearanceSizePreference.allCases.firstIndex(of: .auto)!],
             segmentWidth: 100,
-            attachBadge: { c in AppearanceTab.addProBadgeToAutoSegment(c) },
-            refreshBadge: { c, overlay in
-                AppearanceTab.refreshTrailingSegmentBadge(c, proIndex: AppearanceSizePreference.allCases.firstIndex(of: .auto)!, overlay: overlay)
-            },
+            attachBadge: nil,
+            refreshBadge: nil,
             onChange: onChange)
 
         theme = ShortcutOverrideSegmented(
@@ -458,10 +453,8 @@ final class AppearancePane {
             globalIndex: { Preferences.shortcutStyle.index },
             proGatedIndices: [ShortcutStylePreference.allCases.firstIndex(of: .searchOnRelease)!],
             segmentWidth: 100,
-            attachBadge: { c in AppearanceTab.addProBadgeToShortcutStyleSegment(c, proIndex: ShortcutStylePreference.allCases.firstIndex(of: .searchOnRelease)!) },
-            refreshBadge: { c, overlay in
-                AppearanceTab.refreshTrailingSegmentBadge(c, proIndex: ShortcutStylePreference.allCases.firstIndex(of: .searchOnRelease)!, overlay: overlay)
-            },
+            attachBadge: nil,
+            refreshBadge: nil,
             onChange: onChange)
 
         preview = ShortcutOverrideSwitch(

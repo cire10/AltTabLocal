@@ -414,9 +414,7 @@ class AppearanceTab: NSObject {
     // References used by `refreshProLockUi()` to update Pro-lock affordances while Settings stays open.
     private static weak var styleButtonsStack: NSStackView?
     private static weak var sizeControlRef: NSSegmentedControl?
-    private static var autoSegmentOverlayRef: ProBadgeView.SegmentOverlay?
     private static weak var shortcutStyleControlRef: NSSegmentedControl?
-    private static var shortcutStyleSegmentOverlayRef: ProBadgeView.SegmentOverlay?
     private static var proLockObserver: NSObjectProtocol?
 
     /// One icon button per overridable preference, parked at the trailing edge of each row (same
@@ -452,8 +450,6 @@ class AppearanceTab: NSObject {
         animationsButton = nil
         customizeStyleSheet = nil
         animationsSheet = nil
-        autoSegmentOverlayRef = nil
-        shortcutStyleSegmentOverlayRef = nil
         overrideInfoIcons.removeAll()
     }
 
@@ -480,7 +476,6 @@ class AppearanceTab: NSObject {
             ControlsTab.syncOverrideControlsToGlobal()
             refreshAllOverrideInfoLabels()
         }, buttonSpacing: 10, proGatedIndices: proGatedAppearanceStyleIndices())
-        addProBadgesToStyleButtons(styleButtons)
         styleButtonsStack = styleButtons
         // For the style row, the control is a horizontal stack of style cards centered in the row.
         // Wrap [styleButtons, overrideIcon] in another HStack so the icon trails the cards — same
@@ -491,23 +486,12 @@ class AppearanceTab: NSObject {
         styleRow.alignment = .centerY
         styleRow.spacing = TableGroupView.padding
         table.addRow(secondaryViews: [styleRow], secondaryViewsAlignment: .centerX)
-        let sizeControl = LabelAndControl.makeSegmentedControl("appearanceSize", AppearanceSizePreference.allCases, segmentWidth: 105, extraAction: { control in
-            refreshAutoSegmentAppearance(control as! NSSegmentedControl)
+        let sizeControl = LabelAndControl.makeSegmentedControl("appearanceSize", AppearanceSizePreference.allCases, segmentWidth: 105, extraAction: { _ in
             ControlsTab.syncOverrideControlsToGlobal()
             refreshAllOverrideInfoLabels()
         })
         wrapAppearanceSizeProLockIntercept(sizeControl)
         sizeControlRef = sizeControl
-        let autoOverlay = addProBadgeToAutoSegment(sizeControl)
-        autoSegmentOverlayRef = autoOverlay
-        // AppKit re-resolves segment label/background colors on window-key transitions but doesn't
-        // notify our overlay subviews. Hook the badge's own key-state observer to trigger our
-        // resync (which calls `needsDisplay` on the icon/label so their `colorProvider`-driven
-        // `viewWillDraw` picks up the new state).
-        autoOverlay.badge.onWindowKeyChanged = { [weak sizeControl] in
-            guard let sizeControl else { return }
-            refreshAutoSegmentAppearance(sizeControl)
-        }
         table.addRow(leftText: AppearanceTab.labelSize,
             rightViews: [sizeControl, makeOverrideIcon("appearanceSizeOverride")])
         table.addRow(leftText: AppearanceTab.labelTheme,
@@ -585,19 +569,12 @@ class AppearanceTab: NSObject {
 
     private static func addAfterKeysReleasedRow(_ table: TableGroupView) {
         let proIndex = ShortcutStylePreference.allCases.firstIndex(of: .searchOnRelease)!
-        let control = LabelAndControl.makeSegmentedControl("shortcutStyle", ShortcutStylePreference.allCases, segmentWidth: 105, extraAction: { control in
-            refreshShortcutStyleSegmentAppearance(control as! NSSegmentedControl)
+        let control = LabelAndControl.makeSegmentedControl("shortcutStyle", ShortcutStylePreference.allCases, segmentWidth: 105, extraAction: { _ in
             ControlsTab.syncOverrideControlsToGlobal()
             refreshAllOverrideInfoLabels()
         })
         wrapShortcutStyleProLockIntercept(control, proIndex: proIndex)
         shortcutStyleControlRef = control
-        let shortcutStyleOverlay = addProBadgeToShortcutStyleSegment(control, proIndex: proIndex)
-        shortcutStyleSegmentOverlayRef = shortcutStyleOverlay
-        shortcutStyleOverlay.badge.onWindowKeyChanged = { [weak control] in
-            guard let control else { return }
-            refreshShortcutStyleSegmentAppearance(control)
-        }
         table.addRow(leftText: AppearanceTab.labelShortcutStyle,
             rightViews: [control, makeOverrideIcon("shortcutStyleOverride")])
     }
@@ -609,29 +586,11 @@ class AppearanceTab: NSObject {
             if segmented.selectedSegment == proIndex && LicenseManager.shared.isProLocked {
                 let stored: ShortcutStylePreference = CachedUserDefaults.macroPref("shortcutStyle", ShortcutStylePreference.allCases)
                 segmented.selectedSegment = stored.index
-                refreshShortcutStyleSegmentAppearance(segmented)
                 UpgradeTab.navigateToUpgradeTab()
                 return
             }
             original?(c)
         }
-    }
-
-    /// Re-sync the Search-segment overlay's state. See `refreshAutoSegmentAppearance`.
-    private static func refreshShortcutStyleSegmentAppearance(_ segmentedControl: NSSegmentedControl) {
-        guard let overlay = shortcutStyleSegmentOverlayRef else { return }
-        refreshTrailingSegmentBadge(segmentedControl, proIndex: ShortcutStylePreference.allCases.firstIndex(of: .searchOnRelease)!, overlay: overlay)
-    }
-
-    static func addProBadgeToShortcutStyleSegment(_ segmentedControl: NSSegmentedControl, proIndex: Int) -> ProBadgeView.SegmentOverlay {
-        return ProBadgeView.attach(to: segmentedControl,
-            segmentIndex: proIndex,
-            label: ShortcutStylePreference.searchOnRelease.localizedString,
-            symbol: ShortcutStylePreference.searchOnRelease.symbol)
-    }
-
-    static func refreshTrailingSegmentBadge(_ segmentedControl: NSSegmentedControl, proIndex: Int, overlay: ProBadgeView.SegmentOverlay) {
-        ProBadgeView.refreshSelection(in: segmentedControl, proIndex: proIndex, overlay: overlay)
     }
 
     private static func addPreviewSelectedWindowRow(_ table: TableGroupView) {
@@ -670,13 +629,6 @@ class AppearanceTab: NSObject {
         SettingsWindow.shared.beginSheetWithSearchHighlight(animationsSheet)
     }
 
-    /// Re-sync the Auto-segment overlay's state (badge + icon/label color). Called on click,
-    /// Pro-lock transitions, programmatic resync, and window key-state changes.
-    private static func refreshAutoSegmentAppearance(_ segmentedControl: NSSegmentedControl) {
-        guard let overlay = autoSegmentOverlayRef else { return }
-        refreshTrailingSegmentBadge(segmentedControl, proIndex: AppearanceSizePreference.allCases.count - 1, overlay: overlay)
-    }
-
     /// Wraps the segmented control's onAction so clicks on the Pro-only `.auto` segment are
     /// redirected to the Upgrade tab while Pro is locked, instead of writing the preference.
     private static func wrapAppearanceSizeProLockIntercept(_ segmentedControl: NSSegmentedControl) {
@@ -687,33 +639,10 @@ class AppearanceTab: NSObject {
             if segmented.selectedSegment == autoIndex && LicenseManager.shared.isProLocked {
                 let stored: AppearanceSizePreference = CachedUserDefaults.macroPref("appearanceSize", AppearanceSizePreference.allCases)
                 segmented.selectedSegment = stored.index
-                // We bail before `original` fires, so the overlay's selection-sync (which
-                // normally runs in the `extraAction`) never executes. Trigger it manually so the
-                // badge and label colors track the reset selection.
-                refreshAutoSegmentAppearance(segmented)
                 UpgradeTab.navigateToUpgradeTab()
                 return
             }
             original?(control)
-        }
-    }
-
-    static func addProBadgeToAutoSegment(_ segmentedControl: NSSegmentedControl) -> ProBadgeView.SegmentOverlay {
-        return ProBadgeView.attach(to: segmentedControl,
-            segmentIndex: AppearanceSizePreference.allCases.count - 1,
-            label: AppearanceSizePreference.auto.localizedString,
-            symbol: AppearanceSizePreference.auto.symbol)
-    }
-
-    static func addProBadgesToStyleButtons(_ stackView: NSStackView) {
-        for (index, view) in stackView.arrangedSubviews.enumerated() {
-            guard index > 0, let buttonView = view as? ImageTextButtonView else { continue }
-            let badge = ProBadgeView()
-            buttonView.addSubview(badge)
-            NSLayoutConstraint.activate([
-                badge.leadingAnchor.constraint(equalTo: buttonView.label.trailingAnchor, constant: 4),
-                badge.centerYAnchor.constraint(equalTo: buttonView.label.centerYAnchor, constant: 1),
-            ])
         }
     }
 
@@ -736,12 +665,10 @@ class AppearanceTab: NSObject {
         if let sizeControl = sizeControlRef {
             let storedSize: AppearanceSizePreference = CachedUserDefaults.macroPref("appearanceSize", AppearanceSizePreference.allCases)
             sizeControl.selectedSegment = storedSize.index
-            refreshAutoSegmentAppearance(sizeControl)
         }
         if let control = shortcutStyleControlRef {
             let storedShortcut: ShortcutStylePreference = CachedUserDefaults.macroPref("shortcutStyle", ShortcutStylePreference.allCases)
             control.selectedSegment = storedShortcut.index
-            refreshShortcutStyleSegmentAppearance(control)
         }
     }
 

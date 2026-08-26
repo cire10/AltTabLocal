@@ -22,6 +22,10 @@ git_clone_tag "$GIT_URL" "$UPSTREAM_VERSION" "$TMP/src"
 fetch_extract "$PLCRASHREPORTER_URL" "$TMP/plcr"
 
 rebuild_dest "$DEST" Sources/AppCenter Sources/AppCenterCrashes Frameworks
+cp "$TMP/src/LICENSE" "$DEST/LICENSE"
+curl --fail --location --silent --show-error \
+    "https://raw.githubusercontent.com/microsoft/plcrashreporter/${PLCRASHREPORTER_VERSION}/LICENSE" \
+    --output "$DEST/PLCrashReporter-LICENSE"
 
 # Source: only the two modules we use
 cp -R "$TMP/src/AppCenter/AppCenter/." "$DEST/Sources/AppCenter/"

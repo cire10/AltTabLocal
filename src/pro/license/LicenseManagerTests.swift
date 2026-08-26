@@ -70,6 +70,37 @@ final class LicenseManagerTests: XCTestCase {
         XCTAssertEqual(manager.state, .trialExpired)
     }
 
+    func testLocalProModeUnlocksWithoutTrialKeychainOrNetwork() {
+        let local = LicenseManager(clock: clock, keychain: keychain, api: api, defaults: defaults, mode: .localPro)
+        local.initialize()
+        local.refreshState()
+        local.scheduleAsyncRevalidationIfNeeded()
+        local.revalidateWithServer()
+
+        XCTAssertEqual(local.state, .pro)
+        XCTAssertTrue(local.isProAvailable)
+        XCTAssertFalse(local.isProLocked)
+        XCTAssertTrue(local.isLifetimeVariant)
+        XCTAssertNil(local.trialStartDate)
+        XCTAssertNil(keychain.value(account: LicenseManager.keychainKeyAccount))
+        XCTAssertTrue(api.activateCalls.isEmpty)
+        XCTAssertTrue(api.validateCalls.isEmpty)
+        XCTAssertTrue(api.deactivateCalls.isEmpty)
+    }
+
+    func testLocalProModeRejectsLicenseOperationsWithoutCallingApi() {
+        let local = LicenseManager(clock: clock, keychain: keychain, api: api, defaults: defaults, mode: .localPro)
+        var failures = 0
+        local.activate("unused") { if case .failure = $0 { failures += 1 } }
+        local.deactivate { if case .failure = $0 { failures += 1 } }
+        local.deactivateInstance(licenseKey: "unused", instanceId: "unused") { if case .failure = $0 { failures += 1 } }
+
+        XCTAssertEqual(failures, 3)
+        XCTAssertTrue(api.activateCalls.isEmpty)
+        XCTAssertTrue(api.validateCalls.isEmpty)
+        XCTAssertTrue(api.deactivateCalls.isEmpty)
+    }
+
     // MARK: - Keychain-backed licenses
 
     func testExistingValidLicenseIsPro() {
@@ -544,4 +575,3 @@ final class MockLicenseAPI: LicenseAPI {
         DispatchQueue.main.async { completion(r) }
     }
 }
-

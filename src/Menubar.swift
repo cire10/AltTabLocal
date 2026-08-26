@@ -5,9 +5,6 @@ class Menubar {
     static var menu: NSMenu!
     static var permissionCalloutMenuItems: [NSMenuItem]?
     private static var permissionCallout: PermissionCallout?
-    private static var upgradeToProMenuItem: NSMenuItem!
-    private static var supportProjectMenuItem: NSMenuItem!
-    private static var myAccountMenuItem: NSMenuItem!
     private static let menuDelegate = MenubarMenuDelegate()
     private static var isVisibleObserver: NSKeyValueObservation?
 
@@ -37,17 +34,10 @@ class Menubar {
         addMenuItem(NSLocalizedString("Show", comment: "Menubar option"), #selector(App.showUiFromShortcut0), "", "eye", nil, App.self)
         menu.addItem(NSMenuItem.separator())
         addMenuItem(NSLocalizedString("Settings…", comment: "Menubar option"), #selector(App.showSettingsWindow), ",", "gear", nil, App.self)
-        addMenuItem(NSLocalizedString("Check for updates…", comment: "Menubar option"), #selector(App.checkForUpdatesNow), "", "checkmark.arrow.trianglehead.clockwise", nil, App.self)
         addMenuItem(NSLocalizedString("Check permissions…", comment: "Menubar option"), #selector(App.checkPermissions), "", "hand.raised", nil, App.self)
         menu.addItem(NSMenuItem.separator())
         addMenuItem(String(format: NSLocalizedString("About %@", comment: "Menubar option. %@ is AltTab"), App.name), #selector(App.showAboutWindow), "", "info.circle", nil, App.self)
         addMenuItem(NSLocalizedString("Debug tools", comment: "Menubar option"), #selector(App.showDebugWindow), "", "scope", nil, App.self)
-        addMenuItem(NSLocalizedString("Send feedback…", comment: "Menubar option"), #selector(App.showFeedbackPanel), "", "text.bubble", nil, App.self)
-        upgradeToProMenuItem = addMenuItem(NSLocalizedString("Get Pro", comment: "Menubar option"), App.upgradeToProAction, "", "star.fill", nil, App.self)
-        upgradeToProMenuItem.view = UpgradeMenuItemView()
-        myAccountMenuItem = addMenuItem(NSLocalizedString("My Account", comment: ""), App.openAccountAction, "", "person.crop.circle", nil, App.self)
-        supportProjectMenuItem = addMenuItem(NSLocalizedString("Support this project", comment: "Menubar option"), App.supportProjectAction, "", "heart.fill", .red, App.self)
-        refreshLicenseMenuItems()
         menu.addItem(NSMenuItem.separator())
         addMenuItem(String(format: NSLocalizedString("Quit %@", comment: "%@ is AltTab"), App.name), #selector(NSApplication.terminate(_:)), "q", nil) // "xmark.rectangle" is not necessary; macos automatically recognizes Quit
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -80,42 +70,6 @@ class Menubar {
         }
     }
     #endif
-
-    static func refreshLicenseMenuItems() {
-        guard upgradeToProMenuItem != nil else { return }
-        let state = LicenseManager.shared.state
-        switch state {
-        case .trial:
-            toggleUpgradeMenuItem(true)
-            supportProjectMenuItem.isHidden = true
-            myAccountMenuItem.isHidden = true
-        case .pro:
-            toggleUpgradeMenuItem(false)
-            supportProjectMenuItem.isHidden = true
-            myAccountMenuItem.isHidden = false
-        case .proExpired:
-            toggleUpgradeMenuItem(true)
-            supportProjectMenuItem.isHidden = false
-            myAccountMenuItem.isHidden = false
-        case .trialExpired:
-            toggleUpgradeMenuItem(true)
-            supportProjectMenuItem.isHidden = false
-            myAccountMenuItem.isHidden = true
-        }
-        if case .pro = state { return }
-        (upgradeToProMenuItem.view as? UpgradeMenuItemView)?.updateContent(state)
-    }
-
-    private static func toggleUpgradeMenuItem(_ show: Bool) {
-        if show && !menu.items.contains(upgradeToProMenuItem) {
-            if let i = menu.items.firstIndex(of: supportProjectMenuItem) {
-                menu.insertItem(upgradeToProMenuItem, at: i)
-            }
-        }
-        if !show && menu.items.contains(upgradeToProMenuItem) {
-            menu.removeItem(upgradeToProMenuItem)
-        }
-    }
 
     // The callout is only useful when the user lacks Screen Recording AND has settings that need it
     // (Thumbnails style or window previews). Users who skipped the permission but use neither aren't

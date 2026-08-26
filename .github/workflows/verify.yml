@@ -1,0 +1,40 @@
+name: Verify source
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
+
+jobs:
+  build-and-test:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Show toolchain
+        run: xcodebuild -version
+      - name: Test
+        run: |
+          xcodebuild test \
+            -project alt-tab-macos.xcodeproj \
+            -scheme Test \
+            -configuration Release \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath DerivedDataTests
+      - name: Build release
+        run: |
+          xcodebuild \
+            -project alt-tab-macos.xcodeproj \
+            -scheme Release \
+            -configuration Release \
+            -derivedDataPath DerivedData \
+            build
+      - name: Inspect executable
+        run: |
+          file DerivedData/Build/Products/Release/AltTabLocal.app/Contents/MacOS/AltTabLocal
